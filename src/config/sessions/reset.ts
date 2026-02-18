@@ -2,7 +2,7 @@ import type { SessionConfig, SessionResetConfig } from "../types.base.js";
 import { normalizeMessageChannel } from "../../utils/message-channel.js";
 import { DEFAULT_IDLE_MINUTES } from "./types.js";
 
-export type SessionResetMode = "daily" | "idle";
+export type SessionResetMode = "daily" | "idle" | "never";
 export type SessionResetType = "direct" | "group" | "thread";
 
 export type SessionResetPolicy = {
@@ -141,6 +141,15 @@ export function evaluateSessionFreshness(params: {
   now: number;
   policy: SessionResetPolicy;
 }): SessionFreshness {
+  // "never" mode: session is always fresh, never auto-resets
+  if (params.policy.mode === "never") {
+    return {
+      fresh: true,
+      dailyResetAt: undefined,
+      idleExpiresAt: undefined,
+    };
+  }
+
   const dailyResetAt =
     params.policy.mode === "daily"
       ? resolveDailyResetAtMs(params.now, params.policy.atHour)

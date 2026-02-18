@@ -1,5 +1,6 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { ExtensionAPI, FileOperations } from "@mariozechner/pi-coding-agent";
+import process from "node:process";
 import {
   BASE_CHUNK_RATIO,
   MIN_CHUNK_RATIO,
@@ -12,6 +13,7 @@ import {
   summarizeInStages,
 } from "../compaction.js";
 import { getCompactionSafeguardRuntime } from "./compaction-safeguard-runtime.js";
+import { archiveMessagesToMemory, createDropPlaceholder } from "../../memory/archive-messages.js";
 const FALLBACK_SUMMARY =
   "Summary unavailable due to context limits. Older messages were truncated.";
 const TURN_PREFIX_INSTRUCTIONS =
@@ -202,6 +204,84 @@ export default function compactionSafeguardExtension(api: ExtensionAPI): void {
       let messagesToSummarize = preparation.messagesToSummarize;
 
       const maxHistoryShare = runtime?.maxHistoryShare ?? 0.5;
+      const compactionMode = runtime?.compactionMode ?? "safeguard";
+
+      // Handle "drop-only" mode: archive messages to RAG, no summarization
+      if (compactionMode === "drop-only") {
+        const allMessagesToArchive = [
+          ...preparation.messagesToSummarize,
+          ...turnPrefixMessages,
+        ];
+
+        if (allMessagesToArchive.length > 0) {
+          try {
+            // Get workspace directory from context or use current working directory
+            const workspaceDir = (ctx as { cwd?: string }).cwd ?? process.cwd();
+            const sessionKey = (ctx as { sessionKey?: string }).sessionKey;
+
+            // Archive messages to memory file
+            const archiveResult = await archiveMessagesToMemory({
+              messages: allMessagesToArchive,
+              workspaceDir,
+              sessionKey,
+              timestamp: Date.now(),
+            });
+
+            console.log(
+              `[drop-only compaction] Archived ${archiveResult.messageCount} messages to ${archiveResult.archivePath}`,
+            );
+
+            // Create a placeholder summary instead of AI-generated summary
+            const dropPlaceholder = createDropPlaceholder({
+              messageCount: archiveResult.messageCount,
+              archivePath: archiveResult.archivePath,
+              timestamp: Date.now(),
+            });
+
+            return {
+              compaction: {
+                summary: dropPlaceholder + toolFailureSection + fileOpsSummary,
+                firstKeptEntryId: preparation.firstKeptEntryId,
+                tokensBefore: preparation.tokensBefore,
+                details: { readFiles, modifiedFiles, mode: "drop-only", archived: archiveResult.archivePath },
+              },
+            };
+          } catch (archiveError) {
+            console.warn(
+              `[drop-only compaction] Failed to archive messages: ${
+                archiveError instanceof Error ? archiveError.message : String(archiveError)
+              }. Falling back to simple drop.`,
+            );
+
+            // Even if archiving fails, still use drop-only (no summarization)
+            const simplePlaceholder = createDropPlaceholder({
+              messageCount: allMessagesToArchive.length,
+              timestamp: Date.now(),
+            });
+
+            return {
+              compaction: {
+                summary: simplePlaceholder + toolFailureSection + fileOpsSummary,
+                firstKeptEntryId: preparation.firstKeptEntryId,
+                tokensBefore: preparation.tokensBefore,
+                details: { readFiles, modifiedFiles, mode: "drop-only", archiveFailed: true },
+              },
+            };
+          }
+        }
+
+        // No messages to archive, just return empty summary
+        return {
+          compaction: {
+            summary: `[No messages to archive]${toolFailureSection}${fileOpsSummary}`,
+            firstKeptEntryId: preparation.firstKeptEntryId,
+            tokensBefore: preparation.tokensBefore,
+            details: { readFiles, modifiedFiles, mode: "drop-only" },
+          },
+        };
+      }
+
+      // Continue with normal safeguard/default mode (summarization)
 
       const tokensBefore =
         typeof preparation.tokensBefore === "number" && Number.isFinite(preparation.tokensBefore)

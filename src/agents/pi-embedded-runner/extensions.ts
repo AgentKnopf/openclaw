@@ -3,6 +3,7 @@ import type { SessionManager } from "@mariozechner/pi-coding-agent";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { OpenClawConfig } from "../../config/config.js";
+import type { AgentCompactionMode } from "../../config/types.agent-defaults.js";
 import { resolveContextWindowInfo } from "../context-window-guard.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../defaults.js";
 import { setCompactionSafeguardRuntime } from "../pi-extensions/compaction-safeguard-runtime.js";
@@ -67,8 +68,12 @@ function buildContextPruningExtension(params: {
   };
 }
 
-function resolveCompactionMode(cfg?: OpenClawConfig): "default" | "safeguard" {
-  return cfg?.agents?.defaults?.compaction?.mode === "safeguard" ? "safeguard" : "default";
+function resolveCompactionMode(cfg?: OpenClawConfig): AgentCompactionMode {
+  const mode = cfg?.agents?.defaults?.compaction?.mode;
+  if (mode === "safeguard" || mode === "drop-only") {
+    return mode;
+  }
+  return "default";
 }
 
 export function buildEmbeddedExtensionPaths(params: {
@@ -79,7 +84,11 @@ export function buildEmbeddedExtensionPaths(params: {
   model: Model<Api> | undefined;
 }): string[] {
   const paths: string[] = [];
-  if (resolveCompactionMode(params.cfg) === "safeguard") {
+  const compactionMode = resolveCompactionMode(params.cfg);
+  
+  // Both "safeguard" and "drop-only" modes use the safeguard extension
+  // The extension handles both modes internally
+  if (compactionMode === "safeguard" || compactionMode === "drop-only") {
     const compactionCfg = params.cfg?.agents?.defaults?.compaction;
     const contextWindowInfo = resolveContextWindowInfo({
       cfg: params.cfg,
@@ -91,6 +100,7 @@ export function buildEmbeddedExtensionPaths(params: {
     setCompactionSafeguardRuntime(params.sessionManager, {
       maxHistoryShare: compactionCfg?.maxHistoryShare,
       contextWindowTokens: contextWindowInfo.tokens,
+      compactionMode, // Pass the mode to the runtime
     });
     paths.push(resolvePiExtensionPath("compaction-safeguard"));
   }
