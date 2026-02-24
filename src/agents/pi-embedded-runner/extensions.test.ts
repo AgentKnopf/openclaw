@@ -53,10 +53,8 @@ describe("compaction mode resolution", () => {
     });
 
     it("returns undefined when compaction not configured", () => {
-      const config = {
-        agents: {
-          defaults: {},
-        },
+      const config: { agents?: { defaults?: { compaction?: { mode?: string } } } } = {
+        agents: { defaults: {} },
       };
       expect(config.agents?.defaults?.compaction).toBeUndefined();
     });
@@ -146,10 +144,9 @@ describe("workspace resolution for drop-only archiving", () => {
   });
 
   it("falls back to process.cwd() when runtime is undefined", () => {
-    // Use a variable that could be undefined at runtime (not statically narrowed)
-    const maybeRuntime: { workspaceDir?: string } | undefined =
-      Math.random() > 2 ? { workspaceDir: "/never" } : undefined;
-    const resolved = maybeRuntime?.workspaceDir ?? process.cwd();
+    // Cast to avoid TS narrowing `undefined` literal to `never`
+    const runtime = undefined as unknown as { workspaceDir?: string } | undefined;
+    const resolved = runtime?.workspaceDir ?? process.cwd();
     expect(resolved).toBe(process.cwd());
   });
 

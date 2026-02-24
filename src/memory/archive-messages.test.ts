@@ -1,9 +1,27 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { archiveMessagesToMemory, createDropPlaceholder } from "./archive-messages.js";
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
+
+/** Minimal valid UserMessage for tests. */
+function makeUser(text: string): AgentMessage {
+  return { role: "user", timestamp: 0, content: [{ type: "text", text }] };
+}
+
+/**
+ * Minimal AssistantMessage for tests.
+ * Cast via unknown because AssistantMessage requires runtime-only fields
+ * (api, provider, model, usage, stopReason) not relevant to archiving.
+ */
+function makeAssistant(text: string): AgentMessage {
+  return {
+    role: "assistant",
+    timestamp: 0,
+    content: [{ type: "text", text }],
+  } as unknown as AgentMessage;
+}
 
 describe("createDropPlaceholder", () => {
   it("includes message count", () => {
@@ -58,12 +76,7 @@ describe("archiveMessagesToMemory", () => {
   });
 
   it("creates memory directory if it does not exist", async () => {
-    const messages: AgentMessage[] = [
-      {
-        role: "user",
-        content: [{ type: "text", text: "Hello, world!" }],
-      },
-    ];
+    const messages: AgentMessage[] = [makeUser("Hello, world!")];
 
     await archiveMessagesToMemory({
       messages,
@@ -77,12 +90,7 @@ describe("archiveMessagesToMemory", () => {
   });
 
   it("creates a date-stamped markdown file", async () => {
-    const messages: AgentMessage[] = [
-      {
-        role: "user",
-        content: [{ type: "text", text: "Test message" }],
-      },
-    ];
+    const messages: AgentMessage[] = [makeUser("Test message")];
 
     const timestamp = new Date("2026-02-18T14:30:00Z").getTime();
     const result = await archiveMessagesToMemory({
@@ -98,9 +106,9 @@ describe("archiveMessagesToMemory", () => {
 
   it("returns correct message count", async () => {
     const messages: AgentMessage[] = [
-      { role: "user", content: [{ type: "text", text: "Message 1" }] },
-      { role: "assistant", content: [{ type: "text", text: "Response 1" }] },
-      { role: "user", content: [{ type: "text", text: "Message 2" }] },
+      makeUser("Message 1"),
+      makeAssistant("Response 1"),
+      makeUser("Message 2"),
     ];
 
     const result = await archiveMessagesToMemory({
@@ -114,32 +122,30 @@ describe("archiveMessagesToMemory", () => {
 
   it("appends to existing file", async () => {
     const timestamp = new Date("2026-02-18T14:30:00Z").getTime();
-    
+
     // First archive
     await archiveMessagesToMemory({
-      messages: [{ role: "user", content: [{ type: "text", text: "First batch" }] }],
+      messages: [makeUser("First batch")],
       workspaceDir: tmpDir,
       timestamp,
     });
 
     // Second archive (same date)
     await archiveMessagesToMemory({
-      messages: [{ role: "user", content: [{ type: "text", text: "Second batch" }] }],
+      messages: [makeUser("Second batch")],
       workspaceDir: tmpDir,
       timestamp: timestamp + 1000, // 1 second later, same day
     });
 
     const archivePath = path.join(tmpDir, "memory", "2026-02-18.md");
     const content = await fs.readFile(archivePath, "utf-8");
-    
+
     expect(content).toContain("First batch");
     expect(content).toContain("Second batch");
   });
 
   it("includes session key when provided", async () => {
-    const messages: AgentMessage[] = [
-      { role: "user", content: [{ type: "text", text: "Hello" }] },
-    ];
+    const messages: AgentMessage[] = [makeUser("Hello")];
 
     const result = await archiveMessagesToMemory({
       messages,
@@ -153,9 +159,7 @@ describe("archiveMessagesToMemory", () => {
   });
 
   it("formats user messages correctly", async () => {
-    const messages: AgentMessage[] = [
-      { role: "user", content: [{ type: "text", text: "User said this" }] },
-    ];
+    const messages: AgentMessage[] = [makeUser("User said this")];
 
     const result = await archiveMessagesToMemory({
       messages,
@@ -169,9 +173,7 @@ describe("archiveMessagesToMemory", () => {
   });
 
   it("formats assistant messages correctly", async () => {
-    const messages: AgentMessage[] = [
-      { role: "assistant", content: [{ type: "text", text: "Assistant response" }] },
-    ];
+    const messages: AgentMessage[] = [makeAssistant("Assistant response")];
 
     const result = await archiveMessagesToMemory({
       messages,
