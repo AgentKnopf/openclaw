@@ -6,6 +6,10 @@ export type CompactionSafeguardRuntimeValue = {
   contextWindowTokens?: number;
   /** Compaction mode: "default" | "safeguard" | "drop-only" */
   compactionMode?: AgentCompactionMode;
+  /** Workspace directory for archiving dropped messages. Falls back to process.cwd() if not set. */
+  workspaceDir?: string;
+  /** Session key for tagging archived messages. */
+  sessionKey?: string;
 };
 
 const registry = createSessionManagerRuntimeRegistry<CompactionSafeguardRuntimeValue>();

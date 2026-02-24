@@ -82,10 +82,12 @@ export function buildEmbeddedExtensionPaths(params: {
   provider: string;
   modelId: string;
   model: Model<Api> | undefined;
+  workspaceDir?: string;
+  sessionKey?: string;
 }): string[] {
   const paths: string[] = [];
   const compactionMode = resolveCompactionMode(params.cfg);
-  
+
   // Both "safeguard" and "drop-only" modes use the safeguard extension
   // The extension handles both modes internally
   if (compactionMode === "safeguard" || compactionMode === "drop-only") {
@@ -100,7 +102,9 @@ export function buildEmbeddedExtensionPaths(params: {
     setCompactionSafeguardRuntime(params.sessionManager, {
       maxHistoryShare: compactionCfg?.maxHistoryShare,
       contextWindowTokens: contextWindowInfo.tokens,
-      compactionMode, // Pass the mode to the runtime
+      compactionMode,
+      workspaceDir: params.workspaceDir,
+      sessionKey: params.sessionKey,
     });
     paths.push(resolvePiExtensionPath("compaction-safeguard"));
   }

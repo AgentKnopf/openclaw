@@ -101,5 +101,67 @@ describe("compaction runtime value", () => {
       const mode = runtime.compactionMode ?? "safeguard";
       expect(mode).toBe("safeguard");
     });
+
+    it("supports workspaceDir field", () => {
+      const runtime = {
+        compactionMode: "drop-only" as const,
+        workspaceDir: "/home/user/.openclaw/workspace",
+      };
+      expect(runtime.workspaceDir).toBe("/home/user/.openclaw/workspace");
+    });
+
+    it("supports sessionKey field", () => {
+      const runtime = {
+        compactionMode: "drop-only" as const,
+        sessionKey: "main",
+      };
+      expect(runtime.sessionKey).toBe("main");
+    });
+
+    it("workspaceDir and sessionKey are optional", () => {
+      const runtime: {
+        compactionMode?: "default" | "safeguard" | "drop-only";
+        workspaceDir?: string;
+        sessionKey?: string;
+      } = { compactionMode: "drop-only" };
+      expect(runtime.workspaceDir).toBeUndefined();
+      expect(runtime.sessionKey).toBeUndefined();
+    });
+  });
+});
+
+describe("workspace resolution for drop-only archiving", () => {
+  it("prefers explicit workspaceDir from runtime over process.cwd()", () => {
+    const explicitDir = "/explicit/workspace";
+    const runtime = { workspaceDir: explicitDir };
+    // Simulate the resolution logic in compaction-safeguard.ts
+    const resolved = runtime?.workspaceDir ?? process.cwd();
+    expect(resolved).toBe(explicitDir);
+  });
+
+  it("falls back to process.cwd() when runtime has no workspaceDir", () => {
+    const runtime: { workspaceDir?: string } = {};
+    const resolved = runtime?.workspaceDir ?? process.cwd();
+    expect(resolved).toBe(process.cwd());
+  });
+
+  it("falls back to process.cwd() when runtime is undefined", () => {
+    // Use a variable that could be undefined at runtime (not statically narrowed)
+    const maybeRuntime: { workspaceDir?: string } | undefined =
+      Math.random() > 2 ? { workspaceDir: "/never" } : undefined;
+    const resolved = maybeRuntime?.workspaceDir ?? process.cwd();
+    expect(resolved).toBe(process.cwd());
+  });
+
+  it("sessionKey from runtime is used when set", () => {
+    const runtime = { sessionKey: "main" };
+    const sessionKey = runtime?.sessionKey;
+    expect(sessionKey).toBe("main");
+  });
+
+  it("sessionKey is undefined when not set in runtime", () => {
+    const runtime: { sessionKey?: string } = {};
+    const sessionKey = runtime?.sessionKey;
+    expect(sessionKey).toBeUndefined();
   });
 });

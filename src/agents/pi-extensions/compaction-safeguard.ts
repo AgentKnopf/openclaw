@@ -1,9 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
+import process from "node:process";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { ExtensionAPI, FileOperations } from "@mariozechner/pi-coding-agent";
-import process from "node:process";
 import { extractSections } from "../../auto-reply/reply/post-compaction-context.js";
+import { archiveMessagesToMemory, createDropPlaceholder } from "../../memory/archive-messages.js";
 import {
   BASE_CHUNK_RATIO,
   MIN_CHUNK_RATIO,
@@ -17,7 +18,6 @@ import {
 } from "../compaction.js";
 import { collectTextContentBlocks } from "../content-blocks.js";
 import { getCompactionSafeguardRuntime } from "./compaction-safeguard-runtime.js";
-import { archiveMessagesToMemory, createDropPlaceholder } from "../../memory/archive-messages.js";
 const FALLBACK_SUMMARY =
   "Summary unavailable due to context limits. Older messages were truncated.";
 const TURN_PREFIX_INSTRUCTIONS =
@@ -233,16 +233,13 @@ export default function compactionSafeguardExtension(api: ExtensionAPI): void {
 
       // Handle "drop-only" mode: archive messages to RAG, no summarization
       if (compactionMode === "drop-only") {
-        const allMessagesToArchive = [
-          ...preparation.messagesToSummarize,
-          ...turnPrefixMessages,
-        ];
+        const allMessagesToArchive = [...preparation.messagesToSummarize, ...turnPrefixMessages];
 
         if (allMessagesToArchive.length > 0) {
           try {
             // Get workspace directory from context or use current working directory
-            const workspaceDir = (ctx as { cwd?: string }).cwd ?? process.cwd();
-            const sessionKey = (ctx as { sessionKey?: string }).sessionKey;
+            const workspaceDir = runtime?.workspaceDir ?? process.cwd();
+            const sessionKey = runtime?.sessionKey;
 
             // Archive messages to memory file
             const archiveResult = await archiveMessagesToMemory({
@@ -268,7 +265,12 @@ export default function compactionSafeguardExtension(api: ExtensionAPI): void {
                 summary: dropPlaceholder + toolFailureSection + fileOpsSummary,
                 firstKeptEntryId: preparation.firstKeptEntryId,
                 tokensBefore: preparation.tokensBefore,
-                details: { readFiles, modifiedFiles, mode: "drop-only", archived: archiveResult.archivePath },
+                details: {
+                  readFiles,
+                  modifiedFiles,
+                  mode: "drop-only",
+                  archived: archiveResult.archivePath,
+                },
               },
             };
           } catch (archiveError) {
